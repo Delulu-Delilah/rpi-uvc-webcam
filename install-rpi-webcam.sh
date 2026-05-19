@@ -167,9 +167,9 @@ else echo "$DWC2" | sudo tee -a "$BOOT_CONFIG" >/dev/null; ok "dwc2 overlay adde
 
 # ── Dependencies ─────────────────────────────────────────────
 info "Installing dependencies..."
-sudo apt-get install -y git meson libcamera-dev libjpeg-dev
+sudo apt-get install -y git meson libcamera-dev libjpeg-dev qrencode
 if [[ "$WEBCAM_MODE" == "network" ]]; then
-    sudo apt-get install -y python3-picamera2
+    sudo apt-get install -y python3-picamera2 python3-pil
 fi
 ok "Dependencies installed."
 
@@ -277,11 +277,12 @@ sudo curl -sSL "${REPO}/scripts/pi-webcam" -o /usr/local/bin/pi-webcam
 sudo chmod +x /usr/local/bin/pi-webcam
 ok "CLI installed."
 
-info "Installing MJPEG server..."
+info "Installing scripts..."
 sudo mkdir -p /usr/local/lib/rpi-webcam
 sudo curl -sSL "${REPO}/scripts/mjpeg-server.py" -o /usr/local/lib/rpi-webcam/mjpeg-server.py
 sudo curl -sSL "${REPO}/scripts/auto-update.sh" -o /usr/local/lib/rpi-webcam/auto-update.sh
-sudo chmod +x /usr/local/lib/rpi-webcam/auto-update.sh
+sudo curl -sSL "${REPO}/scripts/timelapse.sh" -o /usr/local/lib/rpi-webcam/timelapse.sh
+sudo chmod +x /usr/local/lib/rpi-webcam/auto-update.sh /usr/local/lib/rpi-webcam/timelapse.sh
 ok "Scripts installed."
 
 # ── MOTD banner ──────────────────────────────────────────────
@@ -298,8 +299,10 @@ WEBCAM_CAMERA="other"; WEBCAM_NETWORK_PORT="8080"
 if systemctl is-active --quiet rpi-uvc-gadget.service 2>/dev/null; then _S="${_G}● Active${_N}";
 elif systemctl is-active --quiet rpi-webcam-network.service 2>/dev/null; then _S="${_G}● Active${_N}";
 else _S="${_R}● Inactive${_N}"; fi
-case "${WEBCAM_CAMERA}" in cam3) _CAM="Camera Module 3";; cam3w) _CAM="Cam3 Wide";; cam2) _CAM="Camera Module 2";;
-cam2noir) _CAM="Cam2 NoIR";; hq) _CAM="HQ Camera";; gs) _CAM="Global Shutter";; *) _CAM="Camera";; esac
+_HELLO=$(command -v rpicam-hello||command -v libcamera-hello||echo "")
+_CD="${_R}✗ Not found${_N}"
+if [[ -n "$_HELLO" ]]; then _cdet=$($_HELLO --list-cameras 2>&1||true)
+[[ "$_cdet" == *"Available"* || "$_cdet" == *"imx"* || "$_cdet" == *"ov"* ]] && _CD="${_G}✓ Detected${_N}"; fi
 _RS=""; [[ "$WEBCAM_RES_480P" == "1" ]] && _RS+="480p "; [[ "$WEBCAM_RES_720P" == "1" ]] && _RS+="720p "
 [[ "$WEBCAM_RES_1080P" == "1" ]] && _RS+="1080p"; _RS="${_RS:- none}"
 _ROT="None"; [[ "$WEBCAM_HFLIP$WEBCAM_VFLIP" == "11" ]] && _ROT="180°"
@@ -313,7 +316,7 @@ echo -e "  ${_B}│${_N}  ${_W}📷  Pi Webcam${_N}                             
 echo -e "  ${_B}├${_bar}┤${_N}"
 printf "  ${_B}│${_N}  ${_W}Service${_N}   ${_D}·····${_N}  %-31b${_B}│${_N}\n" "$_S"
 printf "  ${_B}│${_N}  ${_W}Mode${_N}      ${_D}·····${_N}  %-31s${_B}│${_N}\n" "$_MD"
-printf "  ${_B}│${_N}  ${_W}Camera${_N}    ${_D}·····${_N}  %-31s${_B}│${_N}\n" "$_CAM"
+printf "  ${_B}│${_N}  ${_W}Camera${_N}    ${_D}·····${_N}  %-31b${_B}│${_N}\n" "$_CD"
 printf "  ${_B}│${_N}  ${_W}Device${_N}    ${_D}·····${_N}  %-31s${_B}│${_N}\n" "\"${WEBCAM_PRODUCT}\""
 printf "  ${_B}│${_N}  ${_W}Formats${_N}   ${_D}·····${_N}  %-31s${_B}│${_N}\n" "$_RS"
 printf "  ${_B}│${_N}  ${_W}Rotation${_N}  ${_D}·····${_N}  %-31s${_B}│${_N}\n" "$_ROT"
@@ -378,6 +381,19 @@ RandomizedDelaySec=3600
 WantedBy=timers.target
 UPDTEOF
 
+# Timelapse service
+sudo tee /etc/systemd/system/rpi-webcam-timelapse.service >/dev/null <<'TLEOF'
+[Unit]
+Description=Pi Webcam — Timelapse Capture
+[Service]
+Type=simple
+ExecStart=/usr/local/lib/rpi-webcam/timelapse.sh
+Restart=on-failure
+RestartSec=5
+[Install]
+WantedBy=multi-user.target
+TLEOF
+
 sudo systemctl daemon-reload
 
 # Enable the selected mode
@@ -399,17 +415,16 @@ ok "Services configured."
 
 # ── Completion ────────────────────────────────────────────────
 if [[ "$UPDATE_MODE" == "1" ]]; then
-    ok "Update complete (v3.0.0)."
+    ok "Update complete (v3.1.0)."
 else
     whiptail --title "  ✅  Installation Complete!  " --msgbox "\
 Your Pi is configured as a webcam!
 
-Management commands:
-  pi-webcam status    — view status
-  pi-webcam mode      — switch USB / network
-  pi-webcam rotate    — adjust orientation
-  pi-webcam update    — check for updates
-  pi-webcam logs      — view service logs
+Management CLI — run pi-webcam for all options:
+  pi-webcam status / mode / rotate / test
+  pi-webcam image / night / overlay
+  pi-webcam timelapse / auth / wifi
+  pi-webcam diag / backup / update / logs
 
 $([ "$WEBCAM_MODE" == "network" ] && echo "Stream: http://$(hostname -I 2>/dev/null|awk '{print $1}'):${WEBCAM_NETWORK_PORT}" || echo "Plug into USB data port after reboot.")" $WT_H $WT_W
 

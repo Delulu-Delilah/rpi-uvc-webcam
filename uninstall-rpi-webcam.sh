@@ -33,7 +33,7 @@ read -rp "Continue? [y/N] " yn
 [[ ! "$yn" =~ ^[Yy] ]] && { info "Aborted."; exit 0; }
 
 # Services
-for svc in rpi-uvc-gadget.service rpi-webcam-network.service rpi-webcam-update.service rpi-webcam-update.timer; do
+for svc in rpi-uvc-gadget.service rpi-webcam-network.service rpi-webcam-update.service rpi-webcam-update.timer rpi-webcam-timelapse.service; do
     if systemctl list-unit-files "$svc" &>/dev/null; then
         sudo systemctl stop "$svc" 2>/dev/null || true
         sudo systemctl disable "$svc" 2>/dev/null || true

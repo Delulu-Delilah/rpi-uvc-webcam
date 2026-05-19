@@ -10,69 +10,71 @@ Based on the [official Raspberry Pi tutorial](https://www.raspberrypi.com/tutori
 
 ## Install
 
-SSH into your Pi, then run:
-
 ```bash
 bash <(curl -sSL https://raw.githubusercontent.com/Delulu-Delilah/rpi-uvc-webcam/main/install-rpi-webcam.sh)
 ```
-
-An interactive wizard walks you through:
-- Pi model & camera selection
-- Device name (shown in Zoom/Teams)
-- Resolution selection (480p / 720p / 1080p)
-- **Streaming mode** — USB webcam or network MJPEG
-- **Camera rotation** — 0°, 180°, H-flip, V-flip
-- **Auto-updates** — opt-in weekly checks
-
-## Management CLI
-
-After installation, use `pi-webcam` to manage everything:
-
-```
-pi-webcam status                  Show status
-pi-webcam mode [usb|network]      Switch streaming mode
-pi-webcam rotate [0|180|hflip|vflip]  Set camera rotation
-pi-webcam update                  Check for updates
-pi-webcam update --auto-on        Enable weekly auto-updates
-pi-webcam update --auto-off       Disable auto-updates
-pi-webcam config                  Re-run setup wizard
-pi-webcam logs [N]                Show last N service log lines
-```
-
-## SSH Status Banner
-
-Every SSH login shows a live status box:
-
-```
-  ┌────────────────────────────────────────────────┐
-  │  📷  Pi Webcam                                 │
-  ├────────────────────────────────────────────────┤
-  │  Service   ·····  ● Active                     │
-  │  Mode      ·····  USB Webcam                   │
-  │  Camera    ·····  Camera Module 3              │
-  │  Device    ·····  "Pi Webcam"                  │
-  │  Formats   ·····  480p 720p 1080p              │
-  │  Rotation  ·····  None                         │
-  │  Updates   ·····  Auto (weekly)                │
-  │                                                │
-  │  Run pi-webcam for options                     │
-  └────────────────────────────────────────────────┘
-```
-
-## Streaming Modes
-
-| Mode | How it works | Access |
-|------|-------------|--------|
-| **USB** (default) | Pi acts as a plug-and-play UVC webcam | Plug USB cable into computer |
-| **Network** | MJPEG stream served over HTTP | `http://<pi-ip>:8080` in any browser |
-
-Switch anytime: `pi-webcam mode`
 
 ## Uninstall
 
 ```bash
 bash <(curl -sSL https://raw.githubusercontent.com/Delulu-Delilah/rpi-uvc-webcam/main/uninstall-rpi-webcam.sh)
 ```
+
+## Management CLI — `pi-webcam`
+
+### Streaming
+| Command | Description |
+|---------|-------------|
+| `pi-webcam status` | Show current status |
+| `pi-webcam mode [usb\|network]` | Switch streaming mode |
+| `pi-webcam test` | Capture a test image to verify camera |
+
+### Camera
+| Command | Description |
+|---------|-------------|
+| `pi-webcam rotate [0\|180\|hflip\|vflip]` | Set camera rotation |
+| `pi-webcam image [brightness\|contrast\|saturation\|reset] [val]` | Image adjustments |
+| `pi-webcam night [off\|on\|auto]` | Night / low-light mode (NoIR cameras) |
+| `pi-webcam overlay [on\|off\|set <text>]` | Text overlay on stream |
+
+### Capture
+| Command | Description |
+|---------|-------------|
+| `pi-webcam timelapse [start\|stop\|status]` | Timelapse capture to SD card |
+
+### Network
+| Command | Description |
+|---------|-------------|
+| `pi-webcam auth [set\|off]` | Password-protect the network stream |
+| `pi-webcam wifi [status\|connect]` | WiFi management |
+| `pi-webcam tailscale` | Tailscale VPN status & remote access |
+
+### System
+| Command | Description |
+|---------|-------------|
+| `pi-webcam update [--auto-on\|--auto-off]` | Check for updates / toggle auto-updates |
+| `pi-webcam config` | Re-run setup wizard |
+| `pi-webcam diag` | Full diagnostics report |
+| `pi-webcam backup [path]` | Backup configuration |
+| `pi-webcam restore [path]` | Restore configuration |
+| `pi-webcam logs [N]` | View last N service log lines |
+
+## Features
+
+- **Two streaming modes** — USB plug-and-play webcam or MJPEG network stream
+- **Network stream** has a styled web UI at `http://<pi-ip>:8080` with snapshot endpoint (`/snapshot.jpg`)
+- **Camera rotation** — 0°, 180°, horizontal flip, vertical flip
+- **Image controls** — brightness, contrast, saturation
+- **Text overlay** — timestamp, hostname, or custom text on the stream
+- **Night mode** — optimized exposure for low-light / NoIR cameras
+- **Timelapse** — periodic captures saved to SD card
+- **Password protection** — HTTP basic auth on network stream
+- **QR code** — shown in terminal when switching to network mode
+- **Auto-updates** — opt-in weekly checks via systemd timer
+- **SSH status banner** — live camera/service status on every login
+- **Diagnostics** — one-command troubleshooting dump
+- **WiFi management** — change networks without reflashing
+- **Tailscale** — remote access guidance
 
 ## Prerequisites
 
