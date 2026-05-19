@@ -35,9 +35,13 @@ echo -e "${RED}============================================${NC}"
 echo -e "${RED}  Raspberry Pi UVC Webcam — Uninstaller${NC}"
 echo -e "${RED}============================================${NC}"
 echo ""
+MOTD_SCRIPT="/etc/profile.d/rpi-webcam-status.sh"
+
 echo "This will remove:"
 echo "  • systemd service:  ${SERVICE_FILE}"
 echo "  • gadget script:    ${GADGET_SCRIPT}"
+echo "  • configuration:    ${CONFIG_FILE}"
+echo "  • SSH banner:       ${MOTD_SCRIPT}"
 echo "  • uvc-gadget build: ${UVC_DIR}"
 echo "  • installed binaries (uvc-gadget, libuvcgadget)"
 echo "  • dwc2 overlay line from ${BOOT_CONFIG}"
@@ -84,7 +88,22 @@ if [[ -f "$RC_LOCAL" ]] && grep -qF ".rpi-uvc-gadget.sh" "$RC_LOCAL" 2>/dev/null
 fi
 
 # ------------------------------------------------------------------
-# 4. Uninstall uvc-gadget binaries
+# 4. Remove config and MOTD banner
+# ------------------------------------------------------------------
+if [[ -f "$CONFIG_FILE" ]]; then
+    info "Removing configuration..."
+    sudo rm -f "$CONFIG_FILE"
+    ok "Configuration removed."
+fi
+
+if [[ -f "$MOTD_SCRIPT" ]]; then
+    info "Removing SSH status banner..."
+    sudo rm -f "$MOTD_SCRIPT"
+    ok "SSH banner removed."
+fi
+
+# ------------------------------------------------------------------
+# 5. Uninstall uvc-gadget binaries
 # ------------------------------------------------------------------
 if [[ -d "${UVC_DIR}/build" ]]; then
     info "Uninstalling uvc-gadget binaries..."
@@ -103,7 +122,7 @@ else
 fi
 
 # ------------------------------------------------------------------
-# 5. Remove the uvc-gadget source directory
+# 6. Remove the uvc-gadget source directory
 # ------------------------------------------------------------------
 if [[ -d "$UVC_DIR" ]]; then
     info "Removing uvc-gadget source directory..."
@@ -114,7 +133,7 @@ else
 fi
 
 # ------------------------------------------------------------------
-# 6. Remove dwc2 overlay from boot config
+# 7. Remove dwc2 overlay from boot config
 # ------------------------------------------------------------------
 if grep -qF "$DWC2_LINE" "$BOOT_CONFIG" 2>/dev/null; then
     info "Removing dwc2 OTG overlay from ${BOOT_CONFIG}..."
