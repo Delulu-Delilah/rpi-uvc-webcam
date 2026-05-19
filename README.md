@@ -4,12 +4,9 @@ Turn your Raspberry Pi + Camera Module into a **plug-and-play USB webcam** or **
 
 Based on the [official Raspberry Pi tutorial](https://www.raspberrypi.com/tutorials/plug-and-play-raspberry-pi-usb-webcam/).
 
-> **⚠️ Required OS: Raspberry Pi OS (Legacy) Lite**
+> **⚠️ Required: Raspberry Pi OS Lite (headless)**
 >
-> In Raspberry Pi Imager, select:
-> **Raspberry Pi OS (Other)** → **Raspberry Pi OS (Legacy) Lite**
->
-> This is the Bullseye-based headless image. The standard Bookworm release has not been officially tested with the UVC gadget workflow.
+> In Raspberry Pi Imager, choose any OS option ending in **"Lite"** — this is the headless version with no desktop environment. Both the Legacy (Bullseye) and standard (Bookworm) Lite images are supported.
 
 ## Install
 
@@ -83,7 +80,7 @@ bash <(curl -sSL https://raw.githubusercontent.com/Delulu-Delilah/rpi-uvc-webcam
 |------|-------|
 | Raspberry Pi (Zero 2 W, Zero W, Pi 4, Pi 5) | OTG-capable models for USB mode |
 | Raspberry Pi Camera Module | v2, v3, HQ, or Global Shutter |
-| microSD card | Flashed with **Raspberry Pi OS (Legacy) Lite** — see note above |
+| microSD card | Flashed with **Raspberry Pi OS Lite** (any version) — no desktop |
 | SSH + Wi-Fi | Configured during Imager setup |
 
 ## License

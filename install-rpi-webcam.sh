@@ -38,10 +38,10 @@ else
 whiptail --title "  📷  Pi Webcam Installer v3  " --msgbox "\
 Welcome to the Raspberry Pi USB Webcam installer!
 
-⚠  IMPORTANT: This installer requires:
-   Raspberry Pi OS (Legacy) Lite
-   Found in Imager under:
-   Raspberry Pi OS (Other) > Raspberry Pi OS (Legacy) Lite
+⚠  IMPORTANT: You must use Raspberry Pi OS Lite
+   (the headless version — no desktop environment).
+   In Raspberry Pi Imager, look for any option
+   ending in \"Lite\" under Raspberry Pi OS.
 
 This wizard sets up your Pi as a webcam with:
  • USB plug-and-play OR network MJPEG streaming
