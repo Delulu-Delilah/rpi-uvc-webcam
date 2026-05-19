@@ -12,7 +12,7 @@
 #   3. Installs build dependencies (git, meson, libcamera-dev, libjpeg-dev)
 #   4. Clones, builds, and installs uvc-gadget
 #   5. Writes the UVC gadget setup script to ~/.rpi-uvc-gadget.sh
-#   6. Registers the setup script in /etc/rc.local so it runs on every boot
+#   6. Creates a systemd service to run the gadget script on every boot
 #   7. Prompts to reboot
 # ============================================================================
 
@@ -255,19 +255,31 @@ sudo chmod +x "$GADGET_SCRIPT"
 ok "Gadget script written and marked executable."
 
 # ------------------------------------------------------------------
-# 6. Register in /etc/rc.local
+# 6. Create systemd service (works on Bullseye AND Bookworm)
 # ------------------------------------------------------------------
-RC_LOCAL="/etc/rc.local"
-LAUNCH_LINE="${GADGET_SCRIPT} &"
+SERVICE_FILE="/etc/systemd/system/rpi-uvc-gadget.service"
 
-if grep -qF "$GADGET_SCRIPT" "$RC_LOCAL" 2>/dev/null; then
-    ok "rc.local already contains the gadget launch line."
-else
-    info "Adding gadget script to ${RC_LOCAL}..."
-    # Insert our line just before 'exit 0'
-    sudo sed -i "/^exit 0$/i ${LAUNCH_LINE}" "$RC_LOCAL"
-    ok "rc.local updated."
-fi
+info "Creating systemd service at ${SERVICE_FILE}..."
+
+sudo tee "$SERVICE_FILE" > /dev/null << SVCEOF
+[Unit]
+Description=Raspberry Pi UVC USB Webcam Gadget
+After=systemd-modules-load.service
+ConditionPathIsDirectory=/sys/class/udc
+
+[Service]
+Type=simple
+ExecStart=${GADGET_SCRIPT}
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable rpi-uvc-gadget.service
+ok "systemd service created and enabled."
 
 # ------------------------------------------------------------------
 # 7. Done — prompt reboot
