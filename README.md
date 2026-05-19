@@ -19,13 +19,13 @@ Based on the [official Raspberry Pi tutorial](https://www.raspberrypi.com/tutori
 SSH into your Pi, then run:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/<YOUR_USERNAME>/rpi-uvc-webcam/main/install-rpi-webcam.sh | bash
+curl -sSL https://raw.githubusercontent.com/Delulu-Delilah/rpi-uvc-webcam/main/install-rpi-webcam.sh | bash
 ```
 
 Or clone and run manually:
 
 ```bash
-git clone https://github.com/<YOUR_USERNAME>/rpi-uvc-webcam.git
+git clone https://github.com/Delulu-Delilah/rpi-uvc-webcam.git
 cd rpi-uvc-webcam
 chmod +x install-rpi-webcam.sh
 ./install-rpi-webcam.sh
