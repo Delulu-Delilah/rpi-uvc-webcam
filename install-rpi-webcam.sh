@@ -38,13 +38,18 @@ else
 whiptail --title "  📷  Pi Webcam Installer v3  " --msgbox "\
 Welcome to the Raspberry Pi USB Webcam installer!
 
+⚠  IMPORTANT: This installer requires:
+   Raspberry Pi OS (Legacy) Lite
+   Found in Imager under:
+   Raspberry Pi OS (Other) > Raspberry Pi OS (Legacy) Lite
+
 This wizard sets up your Pi as a webcam with:
  • USB plug-and-play OR network MJPEG streaming
  • Camera rotation controls
  • A management CLI: pi-webcam
  • Optional auto-updates
 
-Press OK to begin." $WT_H $WT_W
+Press OK to begin." 22 $WT_W
 
 if [[ -f "$CONFIG_FILE" ]]; then
     if whiptail --title "  Existing Configuration  " --yesno \
