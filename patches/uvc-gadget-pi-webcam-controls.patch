@@ -1,0 +1,190 @@
+# pi-webcam controls for uvc-gadget
+#
+# Target:  https://gitlab.freedesktop.org/camera/uvc-gadget.git
+# Tested against commit:
+#   04c18aa6c4a7017957e2dfe88c3ff7ef34a1b3a0
+#   ("lib: configfs: Fix the memory allocation for the array of format descriptors")
+#
+# What this patch does:
+#   * Adds pi_webcam_apply_env_controls() in lib/libcamera-source.cpp.
+#   * Reads PI_WEBCAM_* environment variables exported by the gadget systemd
+#     unit (~/.rpi-uvc-gadget.sh sources /etc/rpi-webcam.conf) and pushes the
+#     resulting libcamera controls into the ControlList that uvc-gadget already
+#     passes to Camera::start(). This way OBS / QuickTime / any UVC consumer
+#     sees the same AWB / denoise / AE / brightness / contrast / saturation
+#     tuning as the network MJPEG server.
+#   * Every control is guarded by a ControlInfoMap lookup, so the patch is
+#     safe across libcamera releases — unsupported controls are skipped.
+#
+# Apply with:
+#   git apply --whitespace=fix patches/uvc-gadget-pi-webcam-controls.patch
+#
+# install-rpi-webcam.sh applies this automatically before `meson setup`.
+#
+diff --git a/lib/libcamera-source.cpp b/lib/libcamera-source.cpp
+index 37dc001..37f6796 100644
+--- a/lib/libcamera-source.cpp
++++ b/lib/libcamera-source.cpp
+@@ -7,6 +7,7 @@
+  * Contact: Daniel Scally <dan.scally@ideasonboard.com>
+  */
+ 
++#include <cctype>
+ #include <errno.h>
+ #include <fcntl.h>
+ #include <iostream>
+@@ -20,6 +21,7 @@
+ #include <sys/mman.h>
+ 
+ #include <libcamera/libcamera.h>
++#include <libcamera/control_ids.h>
+ #include <linux/videodev2.h>
+ 
+ #include "config.h"
+@@ -459,6 +461,136 @@ static const struct video_source_ops libcamera_source_ops = {
+ 	.fill_buffer = NULL,
+ };
+ 
++/*
++ * pi-webcam: apply image-pipeline controls from PI_WEBCAM_* environment
++ * variables. Populated before camera->start() in libcamera_source_create().
++ *
++ * Env vars (all optional):
++ *   PI_WEBCAM_AWB_MODE        auto|incandescent|tungsten|fluorescent|
++ *                             indoor|daylight|cloudy|manual
++ *   PI_WEBCAM_AWB_RED_GAIN    float (used only when mode=manual)
++ *   PI_WEBCAM_AWB_BLUE_GAIN   float (used only when mode=manual)
++ *   PI_WEBCAM_NOISE_MODE      off|fast|high|minimal
++ *   PI_WEBCAM_AE_MODE         normal|short|long|custom
++ *   PI_WEBCAM_AE_METERING     centre|spot|matrix
++ *   PI_WEBCAM_BRIGHTNESS      float (-1.0 .. 1.0)
++ *   PI_WEBCAM_CONTRAST        float (>= 0)
++ *   PI_WEBCAM_SATURATION      float (>= 0)
++ *   PI_WEBCAM_HFLIP / VFLIP   0|1
++ *
++ * Controls that are unsupported on the running libcamera build are skipped
++ * silently (via ControlInfoMap lookup) so the patch is safe across versions.
++ */
++static void pi_webcam_apply_env_controls(const ControlInfoMap &infoMap,
++					 ControlList &controls)
++{
++	auto has = [&](const auto &id) {
++		return infoMap.find(&id) != infoMap.end();
++	};
++	auto env_str = [](const char *name) -> std::string {
++		const char *v = std::getenv(name);
++		return v ? std::string(v) : std::string();
++	};
++	auto env_lower = [&](const char *name) {
++		std::string s = env_str(name);
++		for (auto &c : s) c = std::tolower(static_cast<unsigned char>(c));
++		return s;
++	};
++
++	/* ── White balance ── */
++	std::string awb = env_lower("PI_WEBCAM_AWB_MODE");
++	if (!awb.empty()) {
++		static const std::map<std::string, int> awb_map = {
++			{ "auto",         controls::AwbAuto },
++			{ "incandescent", controls::AwbIncandescent },
++			{ "tungsten",     controls::AwbTungsten },
++			{ "fluorescent",  controls::AwbFluorescent },
++			{ "indoor",       controls::AwbIndoor },
++			{ "daylight",     controls::AwbDaylight },
++			{ "cloudy",       controls::AwbCloudy },
++		};
++		if (awb == "manual") {
++			float r = std::atof(env_str("PI_WEBCAM_AWB_RED_GAIN").c_str());
++			float b = std::atof(env_str("PI_WEBCAM_AWB_BLUE_GAIN").c_str());
++			if (r > 0.0f && b > 0.0f) {
++				if (has(controls::AwbEnable))
++					controls.set(controls::AwbEnable, false);
++				if (has(controls::ColourGains))
++					controls.set(controls::ColourGains,
++						     Span<const float, 2>({ r, b }));
++				std::cout << "pi-webcam: manual WB r=" << r
++					  << " b=" << b << std::endl;
++			}
++		} else {
++			auto it = awb_map.find(awb);
++			if (it != awb_map.end()) {
++				if (has(controls::AwbEnable))
++					controls.set(controls::AwbEnable, true);
++				if (has(controls::AwbMode))
++					controls.set(controls::AwbMode, it->second);
++				std::cout << "pi-webcam: AWB mode=" << awb << std::endl;
++			}
++		}
++	}
++
++	/* ── Noise reduction ── */
++	std::string nr = env_lower("PI_WEBCAM_NOISE_MODE");
++	if (!nr.empty() && has(controls::draft::NoiseReductionMode)) {
++		static const std::map<std::string, int> nr_map = {
++			{ "off",     controls::draft::NoiseReductionModeOff },
++			{ "fast",    controls::draft::NoiseReductionModeFast },
++			{ "high",    controls::draft::NoiseReductionModeHighQuality },
++			{ "minimal", controls::draft::NoiseReductionModeMinimal },
++		};
++		auto it = nr_map.find(nr);
++		if (it != nr_map.end()) {
++			controls.set(controls::draft::NoiseReductionMode, it->second);
++			std::cout << "pi-webcam: NoiseReductionMode=" << nr << std::endl;
++		}
++	}
++
++	/* ── Auto exposure ── */
++	std::string ae = env_lower("PI_WEBCAM_AE_MODE");
++	if (!ae.empty() && has(controls::AeExposureMode)) {
++		static const std::map<std::string, int> ae_map = {
++			{ "normal", controls::ExposureNormal },
++			{ "short",  controls::ExposureShort },
++			{ "long",   controls::ExposureLong },
++			{ "custom", controls::ExposureCustom },
++		};
++		auto it = ae_map.find(ae);
++		if (it != ae_map.end()) {
++			controls.set(controls::AeExposureMode, it->second);
++			std::cout << "pi-webcam: AeExposureMode=" << ae << std::endl;
++		}
++	}
++
++	std::string mtr = env_lower("PI_WEBCAM_AE_METERING");
++	if (!mtr.empty() && has(controls::AeMeteringMode)) {
++		static const std::map<std::string, int> m_map = {
++			{ "centre", controls::MeteringCentreWeighted },
++			{ "spot",   controls::MeteringSpot },
++			{ "matrix", controls::MeteringMatrix },
++		};
++		auto it = m_map.find(mtr);
++		if (it != m_map.end()) {
++			controls.set(controls::AeMeteringMode, it->second);
++			std::cout << "pi-webcam: AeMeteringMode=" << mtr << std::endl;
++		}
++	}
++
++	/* ── Brightness / contrast / saturation ── */
++	std::string b = env_str("PI_WEBCAM_BRIGHTNESS");
++	if (!b.empty() && has(controls::Brightness))
++		controls.set(controls::Brightness, (float)std::atof(b.c_str()));
++	std::string c = env_str("PI_WEBCAM_CONTRAST");
++	if (!c.empty() && has(controls::Contrast))
++		controls.set(controls::Contrast, (float)std::atof(c.c_str()));
++	std::string s = env_str("PI_WEBCAM_SATURATION");
++	if (!s.empty() && has(controls::Saturation))
++		controls.set(controls::Saturation, (float)std::atof(s.c_str()));
++}
++
+ std::string cameraName(Camera *camera)
+ {
+ 	const ControlList &props = camera->properties();
+@@ -578,6 +710,9 @@ struct video_source *libcamera_source_create(const char *devname)
+ 			std::cout << "Enabling continuous auto-focus" << std::endl;
+ 			src->controls.set(controls::AfMode, controls::AfModeContinuous);
+ 		}
++
++		/* pi-webcam: apply image-pipeline controls from environment. */
++		pi_webcam_apply_env_controls(infoMap, src->controls);
+ 	}
+ 
+ 	return &src->src;
