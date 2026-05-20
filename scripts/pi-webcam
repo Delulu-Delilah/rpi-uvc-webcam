@@ -15,6 +15,8 @@ load_config() {
     WEBCAM_OVERLAY_ENABLED="0";WEBCAM_OVERLAY_TEXT="%H:%M:%S"
     WEBCAM_NIGHT_MODE="off";WEBCAM_AUTH_USER="";WEBCAM_AUTH_HASH=""
     WEBCAM_TIMELAPSE_INTERVAL="30";WEBCAM_TIMELAPSE_DIR="$HOME/timelapse"
+    WEBCAM_AWB_MODE="auto";WEBCAM_AWB_RED_GAIN="1.5";WEBCAM_AWB_BLUE_GAIN="1.5"
+    WEBCAM_NOISE_MODE="fast";WEBCAM_AE_MODE="normal";WEBCAM_AE_METERING="centre"
     [[ -f "$CONFIG" ]] && source "$CONFIG"
 }
 save_var() { local k="$1" v="$2"
@@ -195,6 +197,82 @@ cmd_overlay() { load_config; local action="${1:-}"
     esac
 }
 
+# ── AWB ──
+cmd_awb() { load_config; local mode="${1:-}"
+    case "$mode" in
+        "")
+            echo -e "  ${W}White balance${N}"
+            echo -e "    Mode:        ${WEBCAM_AWB_MODE}"
+            if [[ "$WEBCAM_AWB_MODE" == "manual" ]]; then
+                echo -e "    Red gain:    ${WEBCAM_AWB_RED_GAIN}"
+                echo -e "    Blue gain:   ${WEBCAM_AWB_BLUE_GAIN}"
+            fi
+            echo -e "\n  ${W}Usage:${N}"
+            echo -e "    pi-webcam awb [auto|incandescent|tungsten|fluorescent|indoor|daylight|cloudy]"
+            echo -e "    pi-webcam awb manual <red_gain> <blue_gain>   (typical range 0.5–4.0)"
+            return;;
+        auto|incandescent|tungsten|fluorescent|indoor|daylight|cloudy)
+            save_var WEBCAM_AWB_MODE "$mode"
+            echo -e "${G}✓${N} White balance: ${mode}";;
+        manual)
+            local r="${2:-}" b="${3:-}"
+            if [[ -z "$r" || -z "$b" ]]; then
+                echo -e "${R}✗${N} Usage: pi-webcam awb manual <red_gain> <blue_gain>"; return 1; fi
+            save_var WEBCAM_AWB_MODE "manual"
+            save_var WEBCAM_AWB_RED_GAIN "$r"
+            save_var WEBCAM_AWB_BLUE_GAIN "$b"
+            echo -e "${G}✓${N} Manual WB: red=${r} blue=${b}";;
+        *) echo -e "${R}✗${N} Unknown WB mode: $mode"; return 1;;
+    esac
+    restart_active
+}
+
+# ── DENOISE ──
+cmd_denoise() { load_config; local mode="${1:-}"
+    case "$mode" in
+        "")
+            echo -e "  ${W}Noise reduction${N}"
+            echo -e "    Mode: ${WEBCAM_NOISE_MODE}"
+            echo -e "\n  ${W}Usage:${N} pi-webcam denoise [off|fast|high|minimal]"
+            echo -e "    fast     — balanced (default; good for YouTube)"
+            echo -e "    high     — strongest denoise, more CPU"
+            echo -e "    minimal  — light touch, preserves detail"
+            echo -e "    off      — no denoise"
+            return;;
+        off|fast|high|minimal)
+            save_var WEBCAM_NOISE_MODE "$mode"
+            echo -e "${G}✓${N} Noise reduction: ${mode}";;
+        *) echo -e "${R}✗${N} Unknown denoise mode: $mode"; return 1;;
+    esac
+    restart_active
+}
+
+# ── AE (auto-exposure) ──
+cmd_ae() { load_config; local sub="${1:-}"
+    case "$sub" in
+        "")
+            echo -e "  ${W}Auto exposure${N}"
+            echo -e "    Mode:     ${WEBCAM_AE_MODE}"
+            echo -e "    Metering: ${WEBCAM_AE_METERING}"
+            echo -e "\n  ${W}Usage:${N}"
+            echo -e "    pi-webcam ae [normal|short|long|custom]"
+            echo -e "    pi-webcam ae metering [centre|spot|matrix]"
+            return;;
+        normal|short|long|custom)
+            save_var WEBCAM_AE_MODE "$sub"
+            echo -e "${G}✓${N} AE mode: ${sub}";;
+        metering)
+            local m="${2:-}"
+            case "$m" in
+                centre|spot|matrix) save_var WEBCAM_AE_METERING "$m"
+                    echo -e "${G}✓${N} AE metering: ${m}";;
+                *) echo -e "${R}✗${N} Usage: pi-webcam ae metering [centre|spot|matrix]"; return 1;;
+            esac;;
+        *) echo -e "${R}✗${N} Unknown AE option: $sub"; return 1;;
+    esac
+    restart_active
+}
+
 # ── NIGHT ──
 cmd_night() { load_config; local mode="${1:-}"
     if [[ -z "$mode" ]]; then
@@ -282,6 +360,9 @@ cmd_help() { echo ""
     echo -e "\n  ${C}CAMERA${N}"
     echo -e "    ${W}rotate${N} [0|180|hflip|vflip]  Camera rotation"
     echo -e "    ${W}image${N}  [brightness|contrast|saturation|reset] [val]"
+    echo -e "    ${W}awb${N}    [auto|incandescent|fluorescent|daylight|cloudy|manual <r> <b>]  White balance"
+    echo -e "    ${W}denoise${N} [off|fast|high|minimal]  Noise reduction"
+    echo -e "    ${W}ae${N}     [normal|short|long|custom] [metering centre|spot|matrix]  Auto exposure"
     echo -e "    ${W}night${N}  [off|on|auto]      Night / low-light mode"
     echo -e "    ${W}overlay${N} [on|off|set <text>] Text overlay on stream"
     echo -e "\n  ${C}CAPTURE${N}"
@@ -304,6 +385,7 @@ case "${1:-help}" in
     test)cmd_test;;diag)cmd_diag;;image)shift;cmd_image "$@";;auth)shift;cmd_auth "$@";;
     backup)shift;cmd_backup "$@";;restore)shift;cmd_restore "$@";;
     overlay)shift;cmd_overlay "$@";;night)shift;cmd_night "$@";;
+    awb)shift;cmd_awb "$@";;denoise)shift;cmd_denoise "$@";;ae)shift;cmd_ae "$@";;
     timelapse)shift;cmd_timelapse "$@";;tailscale)cmd_tailscale;;wifi)shift;cmd_wifi "$@";;
     update)shift;cmd_update "$@";;config)cmd_config;;logs)shift;cmd_logs "$@";;
     help|--help|-h)cmd_help;;*)echo "Unknown: $1";cmd_help;exit 1;;

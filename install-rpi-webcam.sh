@@ -148,7 +148,14 @@ WEBCAM_HFLIP="${WEBCAM_HFLIP}"
 WEBCAM_VFLIP="${WEBCAM_VFLIP}"
 WEBCAM_AUTO_UPDATE="${WEBCAM_AUTO_UPDATE}"
 WEBCAM_NETWORK_PORT="${WEBCAM_NETWORK_PORT}"
-WEBCAM_VERSION="3.0.0"
+# Image pipeline (libcamera controls; applied in both USB and network modes)
+WEBCAM_AWB_MODE="${WEBCAM_AWB_MODE:-auto}"
+WEBCAM_AWB_RED_GAIN="${WEBCAM_AWB_RED_GAIN:-1.5}"
+WEBCAM_AWB_BLUE_GAIN="${WEBCAM_AWB_BLUE_GAIN:-1.5}"
+WEBCAM_NOISE_MODE="${WEBCAM_NOISE_MODE:-fast}"
+WEBCAM_AE_MODE="${WEBCAM_AE_MODE:-normal}"
+WEBCAM_AE_METERING="${WEBCAM_AE_METERING:-centre}"
+WEBCAM_VERSION="3.2.0"
 CONFEOF
 ok "Configuration saved."
 
@@ -175,8 +182,37 @@ ok "Dependencies installed."
 
 # ── Build uvc-gadget ─────────────────────────────────────────
 UVC_DIR="${HOME}/uvc-gadget"
-if [[ -d "$UVC_DIR" ]]; then git -C "$UVC_DIR" pull --ff-only || true
-else git clone https://gitlab.freedesktop.org/camera/uvc-gadget.git "$UVC_DIR"; fi
+# Pinned uvc-gadget revision — the pi-webcam controls patch is authored against
+# this commit. Bump together with patches/uvc-gadget-pi-webcam-controls.patch
+# after re-verifying it still applies.
+UVC_PIN="04c18aa6c4a7017957e2dfe88c3ff7ef34a1b3a0"
+if [[ -d "$UVC_DIR/.git" ]]; then
+    git -C "$UVC_DIR" fetch --tags origin || true
+    git -C "$UVC_DIR" reset --hard "$UVC_PIN" 2>/dev/null || git -C "$UVC_DIR" pull --ff-only || true
+else
+    git clone https://gitlab.freedesktop.org/camera/uvc-gadget.git "$UVC_DIR"
+    git -C "$UVC_DIR" checkout "$UVC_PIN" 2>/dev/null || true
+fi
+
+# Apply pi-webcam image-control patch (env-var driven libcamera controls).
+PATCH_REL="patches/uvc-gadget-pi-webcam-controls.patch"
+PATCH_LOCAL=""
+if [[ -n "${REPO_LOCAL:-}" && -f "${REPO_LOCAL}/${PATCH_REL}" ]]; then
+    PATCH_LOCAL="${REPO_LOCAL}/${PATCH_REL}"
+elif [[ -f "$(dirname "$0")/${PATCH_REL}" ]]; then
+    PATCH_LOCAL="$(dirname "$0")/${PATCH_REL}"
+fi
+if [[ -z "$PATCH_LOCAL" ]]; then
+    info "Fetching pi-webcam controls patch..."
+    PATCH_LOCAL="${UVC_DIR}/pi-webcam-controls.patch"
+    curl -fsSL "${REPO}/${PATCH_REL}" -o "$PATCH_LOCAL" || { warn "Could not download patch; USB image controls will not be applied."; PATCH_LOCAL=""; }
+fi
+if [[ -n "$PATCH_LOCAL" ]]; then
+    (cd "$UVC_DIR" && git checkout -- . && git apply --whitespace=fix "$PATCH_LOCAL") \
+        && ok "Applied pi-webcam controls patch." \
+        || warn "Failed to apply pi-webcam controls patch; USB image controls disabled."
+fi
+
 info "Building uvc-gadget..."
 cd "$UVC_DIR"; [[ -d build ]] && rm -rf build
 meson setup build; ninja -C build; sudo ninja -C build install; sudo ldconfig
@@ -187,6 +223,13 @@ GADGET_SCRIPT="${HOME}/.rpi-uvc-gadget.sh"
 info "Writing gadget script..."
 cat > "$GADGET_SCRIPT" << 'GADGETEOF'
 #!/bin/bash
+# Pi USB UVC gadget bring-up.
+#
+# Image-pipeline controls (white balance, denoise, exposure, brightness,
+# contrast, saturation, flips) are exported as PI_WEBCAM_* env vars below
+# and consumed by the patched uvc-gadget binary; see
+# patches/uvc-gadget-pi-webcam-controls.patch in the installer repo.
+# Night mode and overlay are network-mode only.
 source /etc/rpi-webcam.conf 2>/dev/null
 CONFIGFS="/sys/kernel/config"; GADGET="$CONFIGFS/usb_gadget"
 VID="${WEBCAM_VID:-0x0525}"; PID="${WEBCAM_PID:-0xa4a2}"
@@ -266,7 +309,22 @@ if [ ! -d $GADGET/g1 ]; then
 	create_uvc configs/c.1 uvc.0
 	echo $UDC > UDC
 fi
-uvc-gadget -c 0 uvc.0
+
+# Export image-pipeline knobs for the patched uvc-gadget. Defaults match the
+# pi-webcam CLI defaults so unset values fall back to libcamera defaults.
+export PI_WEBCAM_AWB_MODE="${WEBCAM_AWB_MODE:-auto}"
+export PI_WEBCAM_AWB_RED_GAIN="${WEBCAM_AWB_RED_GAIN:-1.5}"
+export PI_WEBCAM_AWB_BLUE_GAIN="${WEBCAM_AWB_BLUE_GAIN:-1.5}"
+export PI_WEBCAM_NOISE_MODE="${WEBCAM_NOISE_MODE:-fast}"
+export PI_WEBCAM_AE_MODE="${WEBCAM_AE_MODE:-normal}"
+export PI_WEBCAM_AE_METERING="${WEBCAM_AE_METERING:-centre}"
+export PI_WEBCAM_BRIGHTNESS="${WEBCAM_BRIGHTNESS:-0.0}"
+export PI_WEBCAM_CONTRAST="${WEBCAM_CONTRAST:-1.0}"
+export PI_WEBCAM_SATURATION="${WEBCAM_SATURATION:-1.0}"
+export PI_WEBCAM_HFLIP="${WEBCAM_HFLIP:-0}"
+export PI_WEBCAM_VFLIP="${WEBCAM_VFLIP:-0}"
+
+exec uvc-gadget -c 0 uvc.0
 GADGETEOF
 sudo chmod +x "$GADGET_SCRIPT"
 ok "Gadget script written."
