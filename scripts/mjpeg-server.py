@@ -34,6 +34,12 @@ AUTH_HASH = CFG.get("WEBCAM_AUTH_HASH", "")
 OVERLAY_ON = CFG.get("WEBCAM_OVERLAY_ENABLED", "0") == "1"
 OVERLAY_FMT = CFG.get("WEBCAM_OVERLAY_TEXT", "%H:%M:%S")
 NIGHT_MODE = CFG.get("WEBCAM_NIGHT_MODE", "off")
+AWB_MODE = CFG.get("WEBCAM_AWB_MODE", "auto").lower()
+AWB_RED_GAIN = float(CFG.get("WEBCAM_AWB_RED_GAIN", "1.5"))
+AWB_BLUE_GAIN = float(CFG.get("WEBCAM_AWB_BLUE_GAIN", "1.5"))
+NOISE_MODE = CFG.get("WEBCAM_NOISE_MODE", "fast").lower()
+AE_MODE = CFG.get("WEBCAM_AE_MODE", "normal").lower()
+AE_METERING = CFG.get("WEBCAM_AE_METERING", "centre").lower()
 
 if CFG.get("WEBCAM_RES_1080P", "1") == "1": WIDTH, HEIGHT = 1920, 1080
 elif CFG.get("WEBCAM_RES_720P", "1") == "1": WIDTH, HEIGHT = 1280, 720
@@ -145,11 +151,42 @@ def main():
     if BRIGHTNESS != 0.0: controls["Brightness"] = BRIGHTNESS
     if CONTRAST != 1.0: controls["Contrast"] = CONTRAST
     if SATURATION != 1.0: controls["Saturation"] = SATURATION
+
+    # ── White balance ──
+    # Picamera2 expects libcamera enum ints for AwbMode (0..6). When the user
+    # picks "manual" we disable AWB and apply explicit colour gains instead.
+    AWB_PRESETS = {
+        "auto": 0, "incandescent": 1, "tungsten": 2, "fluorescent": 3,
+        "indoor": 4, "daylight": 5, "cloudy": 6,
+    }
+    if AWB_MODE == "manual":
+        controls["AwbEnable"] = False
+        controls["ColourGains"] = (AWB_RED_GAIN, AWB_BLUE_GAIN)
+    elif AWB_MODE in AWB_PRESETS:
+        controls["AwbEnable"] = True
+        controls["AwbMode"] = AWB_PRESETS[AWB_MODE]
+
+    # ── Noise reduction ──
+    NOISE_PRESETS = {"off": 0, "fast": 1, "high": 2, "minimal": 3}
+    if NOISE_MODE in NOISE_PRESETS:
+        controls["NoiseReductionMode"] = NOISE_PRESETS[NOISE_MODE]
+
+    # ── Auto-exposure ──
+    AE_PRESETS = {"normal": 0, "short": 1, "long": 2, "custom": 3}
+    AE_METER_PRESETS = {"centre": 0, "spot": 1, "matrix": 2}
+    if AE_MODE in AE_PRESETS:
+        controls["AeExposureMode"] = AE_PRESETS[AE_MODE]
+    if AE_METERING in AE_METER_PRESETS:
+        controls["AeMeteringMode"] = AE_METER_PRESETS[AE_METERING]
+
+    # ── Night mode (last; overrides AE for the "on" preset) ──
     if NIGHT_MODE == "on":
+        controls["AeEnable"] = False
         controls["ExposureTime"] = 100000
         controls["AnalogueGain"] = 8.0
     elif NIGHT_MODE == "auto":
         controls["AeEnable"] = True
+
     if controls: picam2.set_controls(controls)
 
     # Overlay callback
